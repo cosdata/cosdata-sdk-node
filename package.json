@@ -18,7 +18,12 @@
     "sdk",
     "api"
   ],
-  "author": "",
+  "author": "Cosdata <info@cosdata.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cosdata/cosdata-sdk-node.git"
+  },
+  "homepage": "https://github.com/cosdata/cosdata-sdk-node#readme",
   "license": "MIT",
   "dependencies": {
     "axios": "^1.6.7"
