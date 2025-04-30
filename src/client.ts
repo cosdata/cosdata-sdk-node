@@ -1,5 +1,36 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { Collection } from './collection';
+import { Auth } from './auth';
+
+interface DenseVectorConfig {
+  enabled: boolean;
+  dimension: number;
+  auto_create_index?: boolean;
+}
+
+interface SparseVectorConfig {
+  enabled: boolean;
+  auto_create_index?: boolean;
+}
+
+interface TFIDFOptions {
+  enabled: boolean;
+}
+
+interface CollectionConfig {
+  max_vectors: number | null;
+  replication_factor: number | null;
+}
+
+interface CreateCollectionOptions {
+  name: string;
+  dimension?: number;
+  description?: string;
+  dense_vector?: DenseVectorConfig;
+  sparse_vector?: SparseVectorConfig;
+  tf_idf_options?: TFIDFOptions;
+  store_raw_text?: boolean;
+}
 
 /**
  * Main client for interacting with the Vector Database API.
@@ -7,9 +38,7 @@ import { Collection } from './collection';
 export class Client {
   private host: string;
   private baseUrl: string;
-  private username: string;
-  private password: string;
-  private token: string = '';
+  private auth: Auth;
   private verifySSL: boolean;
   private axiosInstance: AxiosInstance;
 
@@ -35,16 +64,13 @@ export class Client {
   } = {}) {
     this.host = host;
     this.baseUrl = `${host}/vectordb`;
-    this.username = username;
-    this.password = password;
     this.verifySSL = verifySSL;
+    this.auth = new Auth(username, password);
+    this.auth.setClientInfo(host, verifySSL);
 
     this.axiosInstance = axios.create({
-      validateStatus: () => true, // Don't throw HTTP errors, we'll handle them
+      validateStatus: () => true,
     });
-
-    // We don't call login() in the constructor anymore
-    // It will be called automatically when needed
   }
 
   /**
@@ -75,43 +101,12 @@ export class Client {
   }
 
   /**
-   * Authenticate with the server and obtain an access token.
-   * 
-   * @returns The access token string
-   */
-  public async login(): Promise<string> {
-    const url = `${this.host}/auth/create-session`;
-    const data = { username: this.username, password: this.password };
-    
-    const response = await this.axiosInstance.post(url, data, {
-      headers: this.getHeaders(),
-      httpsAgent: this.verifySSL ? undefined : { rejectUnauthorized: false }
-    });
-    
-    if (response.status !== 200) {
-      throw new Error(`Authentication failed: ${JSON.stringify(response.data)}`);
-    }
-    
-    const session = response.data;
-    this.token = session.access_token;
-    return this.token;
-  }
-
-  /**
    * Generate request headers with authentication token if available.
    * 
    * @returns Dictionary of HTTP headers
    */
   public getHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {
-      'Content-type': 'application/json'
-    };
-    
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
-    
-    return headers;
+    return this.auth.getHeaders();
   }
 
   /**
@@ -120,9 +115,7 @@ export class Client {
    * @returns Promise that resolves when authenticated
    */
   private async ensureAuthenticated(): Promise<void> {
-    if (!this.token) {
-      await this.login();
-    }
+    await this.auth.ensureAuthenticated();
   }
 
   /**
@@ -139,34 +132,40 @@ export class Client {
    * Create a new collection (database) for vectors.
    * 
    * @param options - Collection creation options
-   * @param options.name - Name of the collection
-   * @param options.dimension - Dimensionality of vectors to be stored
-   * @param options.description - Optional description of the collection
    * @returns Collection object for the newly created collection
    */
   public async createCollection({
     name,
     dimension = 1024,
-    description = undefined
-  }: {
-    name: string;
-    dimension?: number;
-    description?: string | undefined;
-  }): Promise<Collection> {
+    description,
+    dense_vector,
+    sparse_vector,
+    tf_idf_options,
+    store_raw_text = false
+  }: CreateCollectionOptions): Promise<Collection> {
     await this.ensureAuthenticated();
     
     const url = `${this.baseUrl}/collections`;
     const data = {
       name,
       description,
-      dense_vector: {
+      dense_vector: dense_vector || {
         enabled: true,
-        auto_create_index: false,
         dimension,
+        auto_create_index: false
       },
-      sparse_vector: { enabled: false, auto_create_index: false },
-      metadata_schema: null,
-      config: { max_vectors: null, replication_factor: null },
+      sparse_vector: sparse_vector || {
+        enabled: false,
+        auto_create_index: false
+      },
+      tf_idf_options: tf_idf_options || {
+        enabled: false
+      },
+      config: {
+        max_vectors: null,
+        replication_factor: null
+      },
+      store_raw_text
     };
     
     const response = await this.axiosInstance.post(url, data, {
@@ -178,7 +177,6 @@ export class Client {
       throw new Error(`Failed to create collection: ${JSON.stringify(response.data)}`);
     }
     
-    // Return a Collection object for the newly created collection
     return new Collection(this, name, dimension);
   }
 
@@ -236,7 +234,7 @@ export class Client {
   public async collections(): Promise<Collection[]> {
     const collectionsData = await this.listCollections();
     
-    return collectionsData.map((collectionData: any) => {
+    return (collectionsData.collections || []).map((collectionData: any) => {
       const name = collectionData.name;
       const dimension = collectionData?.dense_vector?.dimension || 1024;
       return new Collection(this, name, dimension);

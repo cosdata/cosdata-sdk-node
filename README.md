@@ -1,6 +1,6 @@
-# COSDATA Vector Store (Node.js SDK)
+# Cosdata Node.js SDK
 
-A TypeScript/JavaScript SDK for interacting with the COSDATA Vector Database API.
+A TypeScript/JavaScript SDK for interacting with the Cosdata Vector Database.
 
 ## Installation
 
@@ -8,144 +8,217 @@ A TypeScript/JavaScript SDK for interacting with the COSDATA Vector Database API
 npm install cosdata-sdk
 ```
 
-## Usage
-
-### Basic Usage
+## Quick Start
 
 ```typescript
-import { Client } from 'cosdata-sdk';
+import { createClient } from 'cosdata-sdk';
 
-// Initialize the client
-const client = new Client({
-  host: 'http://127.0.0.1:8443',
-  username: 'admin',
-  password: 'admin',
-  verifySSL: false
+// Initialize the client (all parameters are optional)
+const client = createClient({
+  host: 'http://127.0.0.1:8443',  // Default host
+  username: 'admin',              // Default username
+  password: 'test_key',           // Default password
+  verifySSL: false                // SSL verification
 });
 
 // Create a collection
 const collection = await client.createCollection({
-  name: 'my_vectors',
-  dimension: 768,
-  description: 'My vector collection'
-});
-
-// Create an index with custom parameters
-const index = await collection.createIndex({
-  distanceMetric: 'cosine',
-  numLayers: 7,
-  maxCacheSize: 1000,
-  efConstruction: 512,
-  efSearch: 256,
-  neighborsCount: 32,
-  level0NeighborsCount: 64
-});
-
-// Insert vectors
-const vectors = [
-  { 
-    id: 1, 
-    values: [0.1, 0.2, 0.3, /* ... */],
-    title: 'Sample Document',
-    category: 'documentation'
-  },
-  { 
-    id: 2, 
-    values: [0.2, 0.3, 0.4, /* ... */],
-    title: 'Another Document'
+  name: 'my_collection',
+  dimension: 128,
+  dense_vector: {
+    enabled: true,
+    dimension: 128,
+    auto_create_index: false
   }
-];
-
-// Using automatic transaction management (recommended)
-await index.transaction(async (txn) => {
-  await txn.upsert(vectors);
 });
 
-// Query vectors
-const results = await index.query({
-  vector: [0.1, 0.2, 0.3, /* ... */],
-  nnCount: 5
+// Create an index
+const index = await collection.createIndex({
+  name: 'my_collection_dense_index',
+  distance_metric: 'cosine',
+  quantization_type: 'auto',
+  sample_threshold: 100,
+  num_layers: 16,
+  max_cache_size: 1024,
+  ef_construction: 128,
+  ef_search: 64,
+  neighbors_count: 10,
+  level_0_neighbors_count: 20
 });
 
-// Fetch a specific vector
-const vector = await index.fetchVector(1);
+// Generate some vectors
+function generateRandomVector(dimension: number): number[] {
+  return Array.from({ length: dimension }, () => Math.random());
+}
 
-// Get collection info
-const info = await collection.getInfo();
+const vectors = Array.from({ length: 100 }, (_, i) => ({
+  id: `vec_${i}`,
+  dense_values: generateRandomVector(128),
+  document_id: `doc_${i}`
+}));
+
+// Add vectors using a transaction
+const txn = collection.transaction();
+await txn.batch_upsert_vectors(vectors);
+await txn.commit();
+
+// Search for similar vectors
+const results = await collection.getSearch().dense({
+  query_vector: generateRandomVector(128),
+  top_k: 5,
+  return_raw_text: true
+});
+
+// Verify vector existence
+const exists = await collection.getVectors().exists('vec_1');
+console.log('Vector exists:', exists);
+
+// Get collection information
+const collectionInfo = await collection.getInfo();
+console.log('Collection info:', collectionInfo);
 
 // List all collections
-const collections = await client.collections();
-```
+const collections = await client.listCollections();
+console.log('Available collections:', collections);
 
-### Transaction Management
+// Version management
+const currentVersion = await collection.getVersions().getCurrent();
+console.log('Current version:', currentVersion);
 
-The SDK provides two ways to manage transactions:
-
-```typescript
-// Automatic transaction management (recommended)
-await index.transaction(async (txn) => {
-  await txn.upsert(vectors);
-  // Transaction is automatically committed on success
-  // or aborted on error
-});
-
-// Manual transaction management
-const txn = index.createTransaction();
-try {
-  await txn.upsert(vectors);
-  await txn.commit();
-} catch (error) {
-  await txn.abort();
-  throw error;
-}
+// Clean up
+await collection.delete();
 ```
 
 ## API Reference
 
 ### Client
 
-- `new Client(options)`: Create a new client instance
-  - `options.host`: Server host URL (default: 'http://127.0.0.1:8443')
-  - `options.username`: Username for authentication (default: 'admin')
-  - `options.password`: Password for authentication (default: 'admin')
-  - `options.verifySSL`: Whether to verify SSL certificates (default: false)
-- `client.createCollection(options)`: Create a new collection
-  - `options.name`: Name of the collection
-  - `options.dimension`: Vector dimension (default: 1024)
-  - `options.description`: Optional collection description
-- `client.getCollection(name)`: Get an existing collection
-- `client.collection(name)`: Alias for getCollection
-- `client.listCollections()`: List all collections
-- `client.collections()`: Get all collections as Collection objects
+The main client for interacting with the Vector Database API.
+
+```typescript
+const client = createClient({
+  host: 'http://127.0.0.1:8443',  // Optional
+  username: 'admin',              // Optional
+  password: 'test_key',           // Optional
+  verifySSL: false                // Optional
+});
+```
+
+Methods:
+- `createCollection(options: { name: string, dimension: number, dense_vector?: { enabled: boolean, dimension: number, auto_create_index: boolean }, sparse_vector?: { enabled: boolean, auto_create_index: boolean }, tf_idf_options?: { enabled: boolean } }): Promise<Collection>`
+- `listCollections(): Promise<string[]>`
+- `getCollection(name: string): Promise<Collection>`
 
 ### Collection
 
-- `collection.createIndex(options)`: Create a new index
-  - `options.distanceMetric`: Type of distance metric (default: 'cosine')
-  - `options.numLayers`: Number of layers in HNSW graph (default: 7)
-  - `options.maxCacheSize`: Maximum cache size (default: 1000)
-  - `options.efConstruction`: ef parameter for construction (default: 512)
-  - `options.efSearch`: ef parameter for search (default: 256)
-  - `options.neighborsCount`: Number of neighbors (default: 32)
-  - `options.level0NeighborsCount`: Level 0 neighbors count (default: 64)
-- `collection.index(distanceMetric)`: Get or create an index
-- `collection.getInfo()`: Get collection information
+The Collection class provides access to all collection-specific operations.
 
-### Index
+```typescript
+const collection = await client.createCollection({
+  name: 'my_collection',
+  dimension: 128,
+  dense_vector: {
+    enabled: true,
+    dimension: 128,
+    auto_create_index: false
+  }
+});
+```
 
-- `index.createTransaction()`: Create a new transaction
-- `index.transaction(callback)`: Execute operations in a transaction
-- `index.query(options)`: Search for similar vectors
-  - `options.vector`: Query vector
-  - `options.nnCount`: Number of nearest neighbors (default: 5)
-- `index.fetchVector(id)`: Fetch a specific vector by ID
+Methods:
+- `createIndex(options: { name: string, distance_metric: string, quantization_type: string, sample_threshold: number, num_layers: number, max_cache_size: number, ef_construction: number, ef_search: number, neighbors_count: number, level_0_neighbors_count: number }): Promise<Index>`
+- `getInfo(): Promise<object>`
+- `delete(): Promise<void>`
+- `transaction(): Promise<Transaction>`
+- `getVectors(): Vectors`
+- `getSearch(): Search`
+- `getVersions(): Versions`
 
 ### Transaction
 
-- `transaction.upsert(vectors)`: Insert or update vectors
-- `transaction.commit()`: Commit the transaction
-- `transaction.abort()`: Abort the transaction
+The Transaction class provides methods for vector operations.
+
+```typescript
+const txn = collection.transaction();
+await txn.batch_upsert_vectors(vectors);
+await txn.commit();
+```
+
+Methods:
+- `upsert_vector(vector: Vector): Promise<void>`
+- `batch_upsert_vectors(vectors: Vector[]): Promise<void>`
+- `commit(): Promise<void>`
+- `abort(): Promise<void>`
+
+### Search
+
+The Search class provides methods for vector similarity search.
+
+```typescript
+const results = await collection.getSearch().dense({
+  query_vector: vector,
+  top_k: 5,
+  return_raw_text: true
+});
+```
+
+Methods:
+- `dense(options: { query_vector: number[], top_k?: number, return_raw_text?: boolean }): Promise<object>`
+- `sparse(options: { query_terms: number[][], top_k?: number, early_terminate_threshold?: number, return_raw_text?: boolean }): Promise<object>`
+- `text(options: { query_text: string, top_k?: number, return_raw_text?: boolean }): Promise<object>`
+
+### Vectors
+
+The Vectors class provides methods for vector operations.
+
+```typescript
+const exists = await collection.getVectors().exists('vec_1');
+```
+
+Methods:
+- `get(vector_id: string): Promise<Vector>`
+- `exists(vector_id: string): Promise<boolean>`
+
+### Versions
+
+The Versions class provides methods for version management.
+
+```typescript
+const currentVersion = await collection.getVersions().getCurrent();
+```
+
+Methods:
+- `getCurrent(): Promise<object>`
+- `list(): Promise<object[]>`
+- `get(version_hash: string): Promise<object>`
+
+## Best Practices
+
+1. **Connection Management**
+   - Use `createClient()` to initialize the client
+   - Reuse the client instance across your application
+   - The client automatically handles authentication and token management
+
+2. **Vector Operations**
+   - Use transactions for batch operations
+   - Always call `commit()` after successful operations
+   - Use `abort()` in case of errors
+   - Maximum batch size is 200 vectors per transaction
+
+3. **Error Handling**
+   - All operations return promises that reject on failure
+   - Use try/catch blocks for error handling
+   - Always clean up resources (delete collections) after testing
+
+4. **Performance**
+   - Adjust index parameters based on your use case
+   - Use appropriate vector dimensions
+   - Consider batch sizes for large operations
+
+5. **Version Management**
+   - Use versions to track collection evolution
+   - Clean up old versions when no longer needed
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the LICENSE file for details.

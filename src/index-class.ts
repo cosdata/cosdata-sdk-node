@@ -2,22 +2,30 @@ import { Client } from './client';
 import { Collection } from './collection';
 import { Transaction } from './transaction';
 
+type IndexType = 'dense' | 'sparse' | 'tf_idf';
+
 /**
  * Class for managing indexes in the vector database.
  */
 export class Index {
   private client: Client;
   private collection: Collection;
+  public name: string;
+  private indexType: IndexType;
 
   /**
    * Initialize an Index object.
    * 
    * @param client - Client instance
    * @param collection - Collection object this index belongs to
+   * @param name - Name of the index
+   * @param indexType - Type of index (dense, sparse, or tf_idf)
    */
-  constructor(client: Client, collection: Collection) {
+  constructor(client: Client, collection: Collection, name: string, indexType: IndexType = 'dense') {
     this.client = client;
     this.collection = collection;
+    this.name = name;
+    this.indexType = indexType;
   }
 
   /**
@@ -122,5 +130,26 @@ export class Index {
     }
     
     return response.data;
+  }
+
+  /**
+   * Delete this index.
+   * 
+   * @returns Promise that resolves when the index is deleted
+   */
+  public async delete(): Promise<void> {
+    const url = `${this.client.getBaseUrl()}/collections/${this.collection.getName()}/indexes/${this.indexType}`;
+    
+    const response = await this.client.getAxiosInstance().delete(
+      url,
+      {
+        headers: this.client.getHeaders(),
+        httpsAgent: this.client.getVerifySSL() ? undefined : { rejectUnauthorized: false }
+      }
+    );
+    
+    if (response.status !== 204) {
+      throw new Error(`Failed to delete index: ${JSON.stringify(response.data)}`);
+    }
   }
 } 

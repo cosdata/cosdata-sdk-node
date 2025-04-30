@@ -3,6 +3,9 @@ export { Client } from './client';
 export { Collection } from './collection';
 export { Index } from './index-class';
 export { Transaction, Vector } from './transaction';
+export { Vectors } from './vectors';
+export { Versions } from './versions';
+export { Search } from './search';
 
 // Export a default client creator function
 import { Client } from './client';

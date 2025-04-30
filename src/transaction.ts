@@ -5,8 +5,12 @@ import { Client } from './client';
  */
 export interface Vector {
   id: string | number;
-  values: number[];
-  [key: string]: any;
+  dense_values?: number[];
+  sparse_values?: number[];
+  sparse_indices?: number[];
+  document_id: string;
+  metadata?: Record<string, any>;
+  text?: string;
 }
 
 /**
@@ -27,8 +31,6 @@ export class Transaction {
   constructor(client: Client, collectionName: string) {
     this.client = client;
     this.collectionName = collectionName;
-    // We don't create the transaction immediately anymore
-    // It will be created when needed
   }
 
   /**
@@ -36,7 +38,11 @@ export class Transaction {
    * 
    * @returns Transaction ID
    */
-  private async create(): Promise<string> {
+  private async _create(): Promise<string> {
+    if (this.transactionId) {
+      return this.transactionId;
+    }
+
     const url = `${this.client.getBaseUrl()}/collections/${this.collectionName}/transactions`;
     const data = { index_type: 'dense' };
     
@@ -59,23 +65,14 @@ export class Transaction {
   }
 
   /**
-   * Ensure a transaction exists before performing operations.
-   * 
-   * @returns Promise that resolves when a transaction is available
-   */
-  private async ensureTransaction(): Promise<void> {
-    if (!this.transactionId) {
-      await this.create();
-    }
-  }
-
-  /**
    * Upsert a single batch of vectors.
    * 
    * @param batch - List of vector objects to upsert
    */
-  private async upsertBatch(batch: Vector[]): Promise<void> {
-    await this.ensureTransaction();
+  private async _upsert_batch(batch: Vector[]): Promise<void> {
+    if (!this.transactionId) {
+      await this._create();
+    }
     
     const url = `${this.client.getBaseUrl()}/collections/${this.collectionName}/transactions/${this.transactionId}/upsert`;
     const data = { index_type: 'dense', vectors: batch };
@@ -95,27 +92,34 @@ export class Transaction {
   }
 
   /**
-   * Upsert vectors into the transaction, automatically splitting into batches.
+   * Insert or update a single vector in the transaction.
    * 
-   * @param vectors - List of vector objects with 'id' and 'values' properties
-   * @returns This transaction for method chaining
+   * @param vector - Vector object to upsert
    */
-  public async upsert(vectors: Vector[]): Promise<this> {
+  public async upsert_vector(vector: Vector): Promise<void> {
+    await this._upsert_batch([vector]);
+  }
+
+  /**
+   * Insert or update multiple vectors in the transaction.
+   * 
+   * @param vectors - List of vector objects to upsert
+   */
+  public async batch_upsert_vectors(vectors: Vector[]): Promise<void> {
+    // Create transaction once at the start
+    await this._create();
+    
     // Split vectors into batches of batchSize
     for (let i = 0; i < vectors.length; i += this.batchSize) {
       const batch = vectors.slice(i, i + this.batchSize);
-      await this.upsertBatch(batch);
+      await this._upsert_batch(batch);
     }
-    
-    return this;
   }
 
   /**
    * Commit the transaction.
-   * 
-   * @returns JSON response from the server or null
    */
-  public async commit(): Promise<any> {
+  public async commit(): Promise<void> {
     if (!this.transactionId) {
       throw new Error('No active transaction to commit');
     }
@@ -136,17 +140,13 @@ export class Transaction {
       throw new Error(`Failed to commit transaction: ${JSON.stringify(response.data)}`);
     }
     
-    const result = response.data || null;
     this.transactionId = null;
-    return result;
   }
 
   /**
    * Abort the transaction.
-   * 
-   * @returns JSON response from the server or null
    */
-  public async abort(): Promise<any> {
+  public async abort(): Promise<void> {
     if (!this.transactionId) {
       throw new Error('No active transaction to abort');
     }
@@ -167,8 +167,6 @@ export class Transaction {
       throw new Error(`Failed to abort transaction: ${JSON.stringify(response.data)}`);
     }
     
-    const result = response.data || null;
     this.transactionId = null;
-    return result;
   }
 } 

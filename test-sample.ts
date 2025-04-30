@@ -1,77 +1,90 @@
 // test-sample.ts
-import { createClient, Vector } from './src';
+import { createClient } from './src';
+import { Vector } from './src/transaction';
 
-// Helper function to generate random vectors
-function generateRandomVectorWithId(id: number | string, length: number): Vector {
-  const values = Array.from({ length }, () => Math.random() * 2 - 1);
-  return { id, values };
+function generateRandomVector(dimension: number): number[] {
+  return Array.from({ length: dimension }, () => Math.random());
 }
 
-async function runTest() {
-  try {
-    // Initialize the client with default credentials
-    const client = createClient({
-      host: 'http://127.0.0.1:8443'
-      // Default credentials will be used (admin/admin)
-    });
+async function main() {
+  // Initialize client
+  const client = createClient({
+    host: 'http://localhost:8443',
+    username: 'admin',
+    password: 'test_key'
+  });
 
-    // Configuration
-    const vectorDbName = 'testdb_sdk_ts';
-    const dimension = 768;
-    const description = 'Test Cosdata TypeScript SDK';
-
-    console.log('Creating collection...');
-    // Create collection and index
-    const collection = await client.createCollection({
-      name: vectorDbName,
-      dimension,
-      description
-    });
-
-    console.log('Creating index...');
-    const index = await collection.createIndex({
-      distanceMetric: 'cosine'
-    });
-
-    // Generate 1000 random vectors
-    const batchVectors = Array.from({ length: 1000 }, (_, i) => 
-      generateRandomVectorWithId(i + 1, dimension)
-    );
-
-    console.log(`Generated ${batchVectors.length} vectors`);
-
-    // Upsert all vectors in a single transaction
-    console.log('Upserting vectors...');
-    await index.transaction(async (txn) => {
-      await txn.upsert(batchVectors);
-      console.log('Upserting complete - all vectors inserted in a single transaction');
-    });
-
-    // Select a random vector from the batch to query
-    const queryVector = batchVectors[Math.floor(Math.random() * batchVectors.length)];
-    console.log(`Querying with vector ID: ${queryVector.id}`);
-
-    // Query the index
-    const results = await index.query({
-      vector: queryVector.values,
-      nnCount: 5
-    });
-    console.log('Query results:', results);
-
-    // Get collection info
-    const collectionInfo = await collection.getInfo();
-    console.log('Collection info:', collectionInfo);
-
-    // List all collections
-    console.log('All collections:');
-    const collections = await client.collections();
-    for (const coll of collections) {
-      console.log(` - ${coll.name} (dimension: ${coll.dimension})`);
+  // Create a dense collection
+  const collectionName = 'test_collection';
+  const collection = await client.createCollection({
+    name: collectionName,
+    dimension: 128,
+    dense_vector: {
+      enabled: true,
+      dimension: 128,
+      auto_create_index: false
     }
-  } catch (error) {
-    console.error('Error:', error);
-  }
+  });
+  console.log('Created collection:', collectionName);
+
+  // List all collections
+  const collections = await client.listCollections();
+  console.log('Collections:', collections);
+
+  // Create a dense index
+  const index = await collection.createIndex({
+    name: `${collectionName}_dense_index`,
+    distance_metric: 'cosine',
+    quantization_type: 'auto',
+    sample_threshold: 100,
+    num_layers: 16,
+    max_cache_size: 1024,
+    ef_construction: 128,
+    ef_search: 64,
+    neighbors_count: 10,
+    level_0_neighbors_count: 20
+  });
+  console.log('Created index');
+
+  // Generate test dense vectors
+  const numVectors = 100;
+  const dimension = 128;
+  const vectors: Vector[] = Array.from({ length: numVectors }, (_, i) => ({
+    id: `vec_${i}`,
+    dense_values: generateRandomVector(dimension),
+    document_id: `doc_${i}`
+  }));
+
+  // Add dense vectors through a transaction
+  console.log("Starting transaction...");
+  const txn = collection.transaction();
+  await txn.batch_upsert_vectors(vectors);
+  await txn.commit();
+  console.log("Added dense vectors through transaction");
+
+  // Verify vector existence
+  const testVectorId = vectors[0].id;
+  const exists = await collection.getVectors().exists(testVectorId.toString());
+  console.log(`\nVector ${testVectorId} exists: ${exists}`);
+
+  console.log("\n=== Dense Search Operations ===");
+  // Perform dense vector search
+  const denseQueryVector = generateRandomVector(dimension);
+  const denseResults = await collection.getSearch().dense({
+    query_vector: denseQueryVector as number[],
+    top_k: 5,
+    return_raw_text: true
+  });
+  console.log(`Dense search results: ${JSON.stringify(denseResults)}`);
+
+  // Get current version
+  const versions = collection.getVersions();
+  const currentVersion = await versions.getCurrent();
+  console.log('Current version:', currentVersion);
+
+  // Clean up
+  await collection.delete();
+  console.log('Deleted collection');
 }
 
-// Run the test
-runTest(); 
+main().catch(console.error);

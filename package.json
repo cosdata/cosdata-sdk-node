@@ -1,6 +1,6 @@
 {
   "name": "cosdata-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TypeScript SDK for Cosdata Vector Database API",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -9,7 +9,10 @@
     "test": "jest",
     "prepare": "npm run build",
     "prepublishOnly": "npm test",
-    "start:sample": "ts-node test-sample.ts"
+    "start:sample": "ts-node test-sample.ts",
+    "start:sparse-sample": "ts-node test-sparse-sample.ts",
+    "start:full-text-sample": "ts-node test-full-text-sample.ts",
+    "start:batch-sample": "ts-node test-sample-batch.ts"
   },
   "keywords": [
     "vector",

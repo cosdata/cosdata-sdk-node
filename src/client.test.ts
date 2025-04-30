@@ -1,73 +1,87 @@
 import { Client } from './client';
-import axios from 'axios';
-
-// Mock axios
-jest.mock('axios');
-const mockedAxios = axios as jest.Mocked<typeof axios>;
+import { Collection } from './collection';
 
 describe('Client', () => {
+  let client: Client;
+
   beforeEach(() => {
-    jest.clearAllMocks();
-    
-    // Mock axios.create to return a mocked instance
-    mockedAxios.create.mockReturnValue({
-      get: jest.fn(),
-      post: jest.fn(),
-    } as any);
+    client = new Client({
+      host: 'http://127.0.0.1:8443',
+      username: 'admin',
+      password: 'test_key'
+    });
   });
 
   it('should initialize with default values', () => {
-    const client = new Client();
-    expect(client.getBaseUrl()).toBe('http://127.0.0.1:8443/vectordb');
-    expect(client.getVerifySSL()).toBe(false);
+    const defaultClient = new Client();
+    expect(defaultClient.getBaseUrl()).toBe('http://127.0.0.1:8443/vectordb');
+    expect(defaultClient.getVerifySSL()).toBe(false);
   });
 
   it('should initialize with custom values', () => {
-    const client = new Client({
+    const customClient = new Client({
       host: 'https://example.com',
       username: 'user',
       password: 'pass',
       verifySSL: true
     });
-    expect(client.getBaseUrl()).toBe('https://example.com/vectordb');
-    expect(client.getVerifySSL()).toBe(true);
+    expect(customClient.getBaseUrl()).toBe('https://example.com/vectordb');
+    expect(customClient.getVerifySSL()).toBe(true);
   });
 
-  it('should generate headers without token', () => {
-    const client = new Client();
-    const headers = client.getHeaders();
-    expect(headers).toEqual({
-      'Content-type': 'application/json'
+  describe('Collection Management', () => {
+    const testCollectionName = 'test_collection';
+
+    afterEach(async () => {
+      try {
+        const collection = await client.getCollection(testCollectionName);
+        await collection.delete();
+      } catch (error) {
+        // Collection might not exist, which is fine
+      }
+    });
+
+    it('should create and manage collections', async () => {
+      // Create a collection
+      const collection = await client.createCollection({
+        name: testCollectionName,
+        dimension: 768,
+        description: 'Test collection'
+      });
+
+      expect(collection).toBeInstanceOf(Collection);
+      expect(collection.getName()).toBe(testCollectionName);
+
+      // List collections
+      const collections = await client.collections();
+      expect(collections).toContainEqual(expect.objectContaining({
+        getName: expect.any(Function)
+      }));
+
+      // Get collection by name
+      const retrievedCollection = await client.getCollection(testCollectionName);
+      expect(retrievedCollection.getName()).toBe(testCollectionName);
+
+      // Delete collection
+      await collection.delete();
+      const collectionsAfterDelete = await client.collections();
+      expect(collectionsAfterDelete.find(c => c.getName() === testCollectionName)).toBeUndefined();
+    });
+
+    it('should handle collection operations with proper error handling', async () => {
+      // Try to get non-existent collection
+      await expect(client.getCollection('non_existent_collection'))
+        .rejects
+        .toThrow();
+
+      // Try to create collection with invalid parameters
+      await expect(client.createCollection({
+        name: testCollectionName,
+        dimension: -1, // Invalid dimension
+        description: 'Test collection'
+      }))
+        .rejects
+        .toThrow();
     });
   });
-
-  it('should include authorization header when token is set', () => {
-    const client = new Client();
-    // Manually set token for testing
-    (client as any).token = 'test-token';
-    
-    const headers = client.getHeaders();
-    expect(headers).toEqual({
-      'Content-type': 'application/json',
-      'Authorization': 'Bearer test-token'
-    });
-  });
-
-  it('should call ensureAuthenticated before making API calls', async () => {
-    const client = new Client();
-    // Mock the private method with an empty implementation
-    const ensureAuthSpy = jest.spyOn(client as any, 'ensureAuthenticated')
-      .mockImplementation(() => Promise.resolve());
-    
-    const axiosGetSpy = jest.fn().mockResolvedValue({ status: 200, data: [] });
-    
-    (client.getAxiosInstance() as any).get = axiosGetSpy;
-    
-    await client.listCollections();
-    
-    expect(ensureAuthSpy).toHaveBeenCalled();
-    expect(axiosGetSpy).toHaveBeenCalled();
-  });
-
-  // More tests would be added for login, collection operations, etc.
 }); 
