@@ -129,7 +129,7 @@ Methods:
 - `createIndex(options: { name: string, distance_metric: string, quantization_type: string, sample_threshold: number, num_layers: number, max_cache_size: number, ef_construction: number, ef_search: number, neighbors_count: number, level_0_neighbors_count: number }): Promise<Index>`
 - `getInfo(): Promise<object>`
 - `delete(): Promise<void>`
-- `transaction(): Promise<Transaction>`
+- `transaction(): Transaction`
 - `getVectors(): Vectors`
 - `getSearch(): Search`
 - `getVersions(): Versions`
@@ -173,10 +173,22 @@ The Vectors class provides methods for vector operations.
 
 ```typescript
 const exists = await collection.getVectors().exists('vec_1');
+const vector = await collection.getVectors().get('vec_1');
 ```
 
 Methods:
-- `get(vector_id: string): Promise<Vector>`
+- `get(vector_id: string): Promise<VectorObject>`
+  - Returns a plain object matching the vector schema:
+    ```typescript
+    interface VectorObject {
+      id: string;
+      document_id?: string;
+      dense_values?: number[];
+      sparse_indices?: number[];
+      sparse_values?: number[];
+      text?: string;
+    }
+    ```
 - `exists(vector_id: string): Promise<boolean>`
 
 ### Versions
@@ -185,12 +197,23 @@ The Versions class provides methods for version management.
 
 ```typescript
 const currentVersion = await collection.getVersions().getCurrent();
+const allVersions = await collection.getVersions().list();
 ```
 
 Methods:
-- `getCurrent(): Promise<object>`
-- `list(): Promise<object[]>`
-- `get(version_hash: string): Promise<object>`
+- `getCurrent(): Promise<Version>`
+- `list(): Promise<Version[]>`
+- `get(version_hash: string): Promise<Version>`
+
+Where `Version` is:
+```typescript
+interface Version {
+  hash: string;
+  version_number: number;
+  timestamp: number;
+  vector_count: number;
+}
+```
 
 ## Best Practices
 
