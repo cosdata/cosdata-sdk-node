@@ -127,7 +127,28 @@ const collection = await client.createCollection({
 
 Methods:
 - `createIndex(options: { name: string, distance_metric: string, quantization_type: string, sample_threshold: number, num_layers: number, max_cache_size: number, ef_construction: number, ef_search: number, neighbors_count: number, level_0_neighbors_count: number }): Promise<Index>`
-- `getInfo(): Promise<object>`
+- `getInfo(): Promise<CollectionInfo>`
+  - Returns collection information:
+    ```typescript
+    interface CollectionInfo {
+      name: string;
+      description?: string;
+      dense_vector?: {
+        enabled: boolean;
+        dimension: number;
+        auto_create_index: boolean;
+      };
+      sparse_vector?: {
+        enabled: boolean;
+        auto_create_index: boolean;
+      };
+      metadata_schema?: Record<string, any>;
+      config?: {
+        max_vectors?: number;
+        replication_factor?: number;
+      };
+    }
+    ```
 - `delete(): Promise<void>`
 - `transaction(): Transaction`
 - `getVectors(): Vectors`
@@ -163,9 +184,24 @@ const results = await collection.getSearch().dense({
 ```
 
 Methods:
-- `dense(options: { query_vector: number[], top_k?: number, return_raw_text?: boolean }): Promise<object>`
-- `sparse(options: { query_terms: number[][], top_k?: number, early_terminate_threshold?: number, return_raw_text?: boolean }): Promise<object>`
-- `text(options: { query_text: string, top_k?: number, return_raw_text?: boolean }): Promise<object>`
+- `dense(options: { query_vector: number[], top_k?: number, return_raw_text?: boolean }): Promise<SearchResponse>`
+  - Returns search results:
+    ```typescript
+    interface SearchResponse {
+      results: SearchResult[];
+    }
+
+    interface SearchResult {
+      id: string;
+      document_id?: string;
+      score: number;
+      text?: string | null;
+    }
+    ```
+- `sparse(options: { query_terms: number[][], top_k?: number, early_terminate_threshold?: number, return_raw_text?: boolean }): Promise<SearchResponse>`
+  - Returns search results with the same interface as dense search
+- `text(options: { query_text: string, top_k?: number, return_raw_text?: boolean }): Promise<SearchResponse>`
+  - Performs text search using TF-IDF and returns results with the same interface as dense search
 
 ### Vectors
 
@@ -177,8 +213,8 @@ const vector = await collection.getVectors().get('vec_1');
 ```
 
 Methods:
-- `get(vector_id: string): Promise<VectorObject>`
-  - Returns a plain object matching the vector schema:
+- `get(vector_id: string): Promise<any>`
+  - Returns a plain object matching the vector schema or null if not found:
     ```typescript
     interface VectorObject {
       id: string;
@@ -190,6 +226,7 @@ Methods:
     }
     ```
 - `exists(vector_id: string): Promise<boolean>`
+- `delete(vector_id: string): Promise<void>`
 
 ### Versions
 
@@ -202,18 +239,25 @@ const allVersions = await collection.getVersions().list();
 
 Methods:
 - `getCurrent(): Promise<Version>`
-- `list(): Promise<Version[]>`
-- `get(version_hash: string): Promise<Version>`
-
-Where `Version` is:
-```typescript
-interface Version {
-  hash: string;
-  version_number: number;
-  timestamp: number;
-  vector_count: number;
-}
-```
+  - Returns the current version information:
+    ```typescript
+    interface Version {
+      hash: string;
+      version_number: number;
+      timestamp: number;
+      vector_count: number;
+    }
+    ```
+- `list(): Promise<ListVersionsResponse>`
+  - Returns all versions and the current hash:
+    ```typescript
+    interface ListVersionsResponse {
+      versions: Version[];
+      current_hash: string;
+    }
+    ```
+- `getByHash(versionHash: string): Promise<Version>`
+  - Returns version information for a specific hash
 
 ## Best Practices
 

@@ -1,5 +1,22 @@
 import { Client } from './client';
 
+/**
+ * Represents a single search result
+ */
+export interface SearchResult {
+  id: string;
+  document_id?: string;
+  score: number;
+  text?: string | null;
+}
+
+/**
+ * Represents the response from search endpoints
+ */
+export interface SearchResponse {
+  results: SearchResult[];
+}
+
 export class Search {
   private client: Client;
   private collectionName: string;
@@ -26,7 +43,7 @@ export class Search {
     query_vector: number[];
     top_k?: number;
     return_raw_text?: boolean;
-  }): Promise<any> {
+  }): Promise<SearchResponse> {
     await this.client['ensureAuthenticated']();
     
     const url = `${this.client.getBaseUrl()}/collections/${this.collectionName}/search/dense`;
@@ -68,7 +85,7 @@ export class Search {
     top_k?: number;
     early_terminate_threshold?: number;
     return_raw_text?: boolean;
-  }): Promise<any> {
+  }): Promise<SearchResponse> {
     await this.client['ensureAuthenticated']();
     
     const url = `${this.client.getBaseUrl()}/collections/${this.collectionName}/search/sparse`;
@@ -108,7 +125,7 @@ export class Search {
     query_text: string;
     top_k?: number;
     return_raw_text?: boolean;
-  }): Promise<any> {
+  }): Promise<SearchResponse> {
     await this.client['ensureAuthenticated']();
     
     const url = `${this.client.getBaseUrl()}/collections/${this.collectionName}/search/tf-idf`;
@@ -147,7 +164,7 @@ export class Search {
     query_text: string;
     top_k?: number;
     return_raw_text?: boolean;
-  }): Promise<any> {
+  }): Promise<SearchResponse> {
     await this.client['ensureAuthenticated']();
     
     const url = `${this.client.getBaseUrl()}/collections/${this.collectionName}/search/tf-idf`;
