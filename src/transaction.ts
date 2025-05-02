@@ -1,4 +1,5 @@
 import { Client } from './client';
+import os from 'os';
 
 /**
  * Interface for vector data
@@ -104,16 +105,50 @@ export class Transaction {
    * Insert or update multiple vectors in the transaction.
    * 
    * @param vectors - List of vector objects to upsert
+   * @param maxWorkers - Number of concurrent workers (default: os.cpus().length)
+   * @param maxRetries - Number of times to retry a failed batch (default: 3)
    */
-  public async batch_upsert_vectors(vectors: Vector[]): Promise<void> {
-    // Create transaction once at the start
+  public async batch_upsert_vectors(
+    vectors: Vector[],
+    maxWorkers: number = os.cpus().length,
+    maxRetries: number = 3
+  ): Promise<void> {
     await this._create();
-    
-    // Split vectors into batches of batchSize
+    const batches: Vector[][] = [];
     for (let i = 0; i < vectors.length; i += this.batchSize) {
-      const batch = vectors.slice(i, i + this.batchSize);
-      await this._upsert_batch(batch);
+      batches.push(vectors.slice(i, i + this.batchSize));
     }
+
+    // Helper for retrying a batch
+    const upsertWithRetry = async (batch: Vector[], batchIdx: number): Promise<void> => {
+      let lastErr: any = null;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          await this._upsert_batch(batch);
+          return;
+        } catch (err) {
+          lastErr = err;
+          await new Promise(res => setTimeout(res, 500 * attempt)); // Exponential backoff
+        }
+      }
+      throw new Error(`Batch ${batchIdx} failed after ${maxRetries} retries: ${lastErr}`);
+    };
+
+    // Concurrency pool
+    let idx = 0;
+    const results: Promise<void>[] = [];
+    const runNext = async (): Promise<void> => {
+      if (idx >= batches.length) return;
+      const myIdx = idx;
+      idx++;
+      await upsertWithRetry(batches[myIdx], myIdx);
+      await runNext();
+    };
+    for (let i = 0; i < Math.min(maxWorkers, batches.length); i++) {
+      results.push(runNext());
+    }
+    // Wait for all to finish
+    await Promise.all(results);
   }
 
   /**

@@ -167,7 +167,7 @@ await txn.commit();
 
 Methods:
 - `upsert_vector(vector: Vector): Promise<void>`
-- `batch_upsert_vectors(vectors: Vector[]): Promise<void>`
+- `batch_upsert_vectors(vectors: Vector[], maxWorkers?: number, maxRetries?: number): Promise<void>`
 - `commit(): Promise<void>`
 - `abort(): Promise<void>`
 

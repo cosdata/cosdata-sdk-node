@@ -104,7 +104,7 @@ async function main() {
     // Configuration
     const collectionName = "test_batch_collection";
     const dimension = 768;
-    const numVectors = 1000;
+    const numVectors = 10000;
     const numQueries = 3;
 
     // Create collection and index
@@ -130,7 +130,11 @@ async function main() {
     logger.info("Testing batch vector upsert...");
     const txn2 = collection.transaction();
     logger.info("Upserting remaining vectors...");
+    const startTime = Date.now();
     await txn2.batch_upsert_vectors(vectors.slice(1));
+    const endTime = Date.now();
+    const elapsed = (endTime - startTime) / 1000;
+    logger.info(`batch_upsert_vectors took ${elapsed.toFixed(2)} seconds.`);
     await txn2.commit();
     logger.info("Successfully upserted remaining vectors");
 
